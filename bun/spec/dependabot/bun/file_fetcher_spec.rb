@@ -192,6 +192,37 @@ RSpec.describe Dependabot::Bun::FileFetcher do
     end
   end
 
+  context "with a bun.lock and packageManager set to another ecosystem" do
+    before do
+      allow(file_fetcher_instance).to receive(:commit).and_return("sha")
+      stub_request(:get, url + "?ref=sha")
+        .with(headers: { "Authorization" => "token token" })
+        .to_return(
+          status: 200,
+          body: fixture("github", "contents_js_bun.json"),
+          headers: json_header
+        )
+      stub_request(:get, File.join(url, "package.json?ref=sha"))
+        .to_return(
+          status: 200,
+          body: fixture_to_response("projects/javascript/package_manager_unparseable", "package.json"),
+          headers: json_header
+        )
+      stub_request(:get, File.join(url, "bun.lock?ref=sha"))
+        .with(headers: { "Authorization" => "token token" })
+        .to_return(
+          status: 200,
+          body: fixture("github", "bun_lock_content.json"),
+          headers: json_header
+        )
+    end
+
+    it "fetches bun.lock" do
+      expect(file_fetcher_instance.files.map(&:name))
+        .to match_array(%w(package.json bun.lock))
+    end
+  end
+
   context "with lockfileVersion not in integer format" do
     before do
       allow(file_fetcher_instance).to receive(:commit).and_return("sha")
