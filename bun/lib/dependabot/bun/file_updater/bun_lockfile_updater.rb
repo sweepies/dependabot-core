@@ -71,30 +71,49 @@ module Dependabot
 
         sig { params(bun_lock: Dependabot::DependencyFile).returns(String) }
         def run_bun_update(bun_lock:)
-          SharedHelpers.in_a_temporary_repo_directory(base_dir, repo_contents_path) do
+          lockfile_dir = Pathname.new(bun_lock.name).dirname.to_s
+          SharedHelpers.in_a_temporary_repo_directory(lockfile_dir, repo_contents_path) do
             File.write(".npmrc", npmrc_content(bun_lock))
 
             SharedHelpers.with_git_configured(credentials: credentials) do
               run_bun_updater
 
-              write_final_package_json_files
+              write_final_package_json_files(lockfile_dir)
 
               run_bun_install
 
-              File.read(bun_lock.name)
+              File.read(Pathname.new(bun_lock.name).basename.to_s)
             end
           end
         end
 
         sig { void }
         def run_bun_updater
-          dependency_updates = dependencies.map do |d|
+          dev_deps = dependencies.select do |d|
+            d.requirements.any? { |r| r[:groups].include?("devDependencies") }
+          end
+          prod_deps = dependencies - dev_deps
+
+          if prod_deps.any?
+            run_bun_add(prod_deps, dev: false)
+          end
+
+          return unless dev_deps.any?
+
+          run_bun_add(dev_deps, dev: true)
+        end
+
+        sig { params(deps: T::Array[Dependabot::Dependency], dev: T::Boolean).void }
+        def run_bun_add(deps, dev:)
+          dependency_updates = deps.map do |d|
             "#{d.name}@#{d.version}"
           end.join(" ")
 
+          flags = dev ? " --dev" : ""
+
           Helpers.run_bun_command(
-            "install #{dependency_updates} --save-text-lockfile",
-            fingerprint: "install <dependency_updates> --save-text-lockfile"
+            "add #{dependency_updates}#{flags} --save-text-lockfile",
+            fingerprint: "add <dependency_updates>#{flags} --save-text-lockfile"
           )
         end
 
@@ -127,10 +146,10 @@ module Dependabot
           raise error
         end
 
-        sig { void }
-        def write_final_package_json_files
+        sig { params(lockfile_dir: String).void }
+        def write_final_package_json_files(lockfile_dir)
           package_files.each do |file|
-            path = file.name
+            path = Pathname.new(file.name).relative_path_from(Pathname.new(lockfile_dir)).to_s
             FileUtils.mkdir_p(Pathname.new(path).dirname)
             File.write(path, updated_package_json_content(file))
           end

@@ -57,6 +57,8 @@ module Dependabot
         version = run_bun_command("--version", fingerprint: "--version").strip
         if version.include?("+")
           version.split("+").first # Remove build info, if present
+        else
+          version
         end
       rescue StandardError => e
         Dependabot.logger.error("Error retrieving Bun version: #{e.message}")
