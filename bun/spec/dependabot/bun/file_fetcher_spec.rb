@@ -83,6 +83,13 @@ RSpec.describe Dependabot::Bun::FileFetcher do
         expect(file_fetcher_instance.ecosystem_versions)
           .to match({ package_managers: { "bun" => an_instance_of(Integer) } })
       end
+
+      it "fetches bun.lock even when bun version cannot be detected" do
+        allow(file_fetcher_instance).to receive(:bun_version).and_return(nil)
+
+        expect(file_fetcher_instance.files.map(&:name))
+          .to match_array(%w(package.json bun.lock))
+      end
     end
   end
 
