@@ -71,14 +71,14 @@ module Dependabot
 
         sig { params(bun_lock: Dependabot::DependencyFile).returns(String) }
         def run_bun_update(bun_lock:)
-          lockfile_dir = Pathname.new(bun_lock.name).dirname.to_s
-          SharedHelpers.in_a_temporary_repo_directory(lockfile_dir, repo_contents_path) do
+          repo_relative_directory = Pathname.new(bun_lock.path).dirname.to_path
+          SharedHelpers.in_a_temporary_repo_directory(repo_relative_directory, repo_contents_path) do
             File.write(".npmrc", npmrc_content(bun_lock))
 
             SharedHelpers.with_git_configured(credentials: credentials) do
               run_bun_updater
 
-              write_final_package_json_files(lockfile_dir)
+              write_final_package_json_files(repo_relative_directory)
 
               run_bun_install
 
@@ -109,12 +109,15 @@ module Dependabot
             "#{d.name}@#{d.version}"
           end.join(" ")
 
-          flags = dev ? " --dev" : ""
+          command = "add #{dependency_updates}"
+          command += " --dev" if dev
+          command += " --save-text-lockfile"
 
-          Helpers.run_bun_command(
-            "add #{dependency_updates}#{flags} --save-text-lockfile",
-            fingerprint: "add <dependency_updates>#{flags} --save-text-lockfile"
-          )
+          fingerprint = "add <dependency_updates>"
+          fingerprint += " --dev" if dev
+          fingerprint += " --save-text-lockfile"
+
+          Helpers.run_bun_command(command, fingerprint: fingerprint)
         end
 
         sig { void }
@@ -146,10 +149,10 @@ module Dependabot
           raise error
         end
 
-        sig { params(lockfile_dir: String).void }
-        def write_final_package_json_files(lockfile_dir)
+        sig { params(repo_relative_directory: String).void }
+        def write_final_package_json_files(repo_relative_directory)
           package_files.each do |file|
-            path = Pathname.new(file.name).relative_path_from(Pathname.new(lockfile_dir)).to_s
+            path = Pathname.new(file.path).relative_path_from(Pathname.new(repo_relative_directory)).to_s
             FileUtils.mkdir_p(Pathname.new(path).dirname)
             File.write(path, updated_package_json_content(file))
           end
@@ -182,11 +185,6 @@ module Dependabot
             dependency_files.select { |f| f.name.end_with?("package.json") },
             T.nilable(T::Array[Dependabot::DependencyFile])
           )
-        end
-
-        sig { returns(String) }
-        def base_dir
-          T.must(dependency_files.first).directory
         end
 
         sig { returns(T.nilable(Dependabot::DependencyFile)) }
