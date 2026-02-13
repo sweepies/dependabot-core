@@ -80,7 +80,7 @@ module Dependabot
         fetched_files = T.let([], T::Array[DependencyFile])
         fetched_files << package_json
         fetched_files << T.must(npmrc) if npmrc
-        fetched_files += bun_files if bun_version
+        fetched_files += bun_files
         fetched_files += workspace_package_jsons
         fetched_files += path_dependencies(fetched_files)
 
